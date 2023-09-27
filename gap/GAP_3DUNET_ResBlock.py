@@ -306,6 +306,7 @@ class UN(pl.LightningModule):
             "monitor": "val_loss",
         }
 
+    # Photon Loss
     def photonLoss(
         self,
         result: torch.Tensor,  # result tensor
@@ -318,6 +319,7 @@ class UN(pl.LightningModule):
         ) * torch.mean(target, dim=(-1, -2, -3, -4), keepdims=True)
         return torch.mean(perImage)
 
+    # Mean Square Error Loss
     def MSELoss(
         self,
         result: torch.Tensor,
@@ -328,14 +330,20 @@ class UN(pl.LightningModule):
         target = target / (torch.mean(target, dim=(-1, -2, -3, -4), keepdims=True))
         return torch.mean((expEnergy - target) ** 2)
 
+    # Training step
     def training_step(
         self,
         batch: torch.Tensor,  # batch of training data
         batch_idx: int = None,  # index of batch
     ) -> torch.Tensor:
+        '''
+        This is the training step for the model.
+        The model iterates over the batch and applies the photonLoss to 
+        the output of the model and the target
+        '''
         if batch_idx is None:
             loss = self.photonLoss(
-                self(batch[:, self.channels :, ...]),  # apply to output of all batch 
+                self(batch[:, self.channels :, ...]),  # apply to output of all batch
                 batch[:, : self.channels, ...],
             )
         else:
@@ -353,8 +361,8 @@ class UN(pl.LightningModule):
     ) -> None:
         if batch_idx is None:
             loss = self.photonLoss(
-                self(batch[:, self.channels :, ...]), # apply to all batch
-                batch[:, : self.channels, ...]
+                self(batch[:, self.channels :, ...]),  # apply to all batch
+                batch[:, : self.channels, ...],
             )
         else:
             loss = self.photonLoss(
@@ -364,14 +372,14 @@ class UN(pl.LightningModule):
         self.log("val_loss", loss)
 
     def test_step(
-        self, 
-        batch: torch.Tensor, 
-        batch_idx: int = None,
+        self,
+        batch: torch.Tensor,  # batch of test data
+        batch_idx: int = None,  # index of batch
     ) -> None:
         if batch_idx is None:
             loss = self.photonLoss(
-                self(batch[:, self.channels :, ...]), # apply to all batch
-                batch[:, : self.channels, ...]
+                self(batch[:, self.channels :, ...]),  # apply to all batch
+                batch[:, : self.channels, ...],
             )
         else:
             loss = self.photonLoss(
