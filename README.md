@@ -1,3 +1,12 @@
+# 3DUnet modification of the original GAP code
+This branch is modified from a 2D Unet to 3D Unet to work with 3D image stacks. **(incomplete...)** <br>
+The updated model is in `GAP_3DUNET_REsBlock.py`.<br>
+A new dataset class `BinomDataset3D` is added.<br>
+The inference is modified to include an option `dim` to switch between 2D and 3D.<br>
+Use `gap3d.yml` to setup the environment.
+
+
+### See below for the Original README.md:
 # Image Denoising and the Generative Accumulation of Photons
 This repository contains the code for the paper: [Image Denoising and the Generative Accumulation of Photons](https://arxiv.org/abs/2307.06607)
 
