@@ -1,0 +1,6 @@
+{
+    "python.analysis.extraPaths": [
+        "./gap",
+        "/home/yehe/Projects/Data/sted GAP test"
+    ]
+}

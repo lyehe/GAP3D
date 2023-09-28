@@ -1,5 +1,6 @@
 # 3DUnet modification of the original GAP code
-This branch is modified from a 2D Unet to 3D Unet to work with 3D image stacks. **(incomplete...)** <br>
+This branch is modified from a 2D Unet to 3D Unet to work with 3D image stacks. <br>
+Progress: **(Partially working...)** <br>
 The updated model is in `GAP_3DUNET_REsBlock.py`.<br>
 A new dataset class `BinomDataset3D` is added.<br>
 The inference is modified to include an option `dim` to switch between 2D and 3D.<br>

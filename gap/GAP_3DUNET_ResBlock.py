@@ -101,14 +101,14 @@ class DownConv(nn.Module):
         self.conv2 = conv3x3x3(self.out_channels, self.out_channels)
         self.conv3 = conv3x3x3(self.out_channels, self.out_channels)
         if self.pooling:
-            self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
+            self.pool = nn.MaxPool3d(kernel_size=2, stride=2)
 
     def forward(
         self,
         input: torch.Tensor,  # input tensor
         dropout: float = 0.0,  # dropout probability
     ) -> torch.Tensor:
-        input_skip = self.conv1(input_skip)
+        input_skip = self.conv1(input)
         input = F.relu(self.conv2(input_skip))
         input = F.relu(self.conv3(input) + input_skip)
         if dropout > 0.0:
@@ -253,8 +253,8 @@ class UN(pl.LightningModule):
         self.reset_params()
 
     @staticmethod
-    def weight_init(m: nn.Conv2d):
-        if isinstance(m, nn.Conv2d):
+    def weight_init(m: nn.Conv3d):
+        if isinstance(m, nn.Conv3d):
             init.xavier_normal(m.weight)
             init.constant(m.bias, 0)
 
@@ -334,56 +334,38 @@ class UN(pl.LightningModule):
     def training_step(
         self,
         batch: torch.Tensor,  # batch of training data
-        batch_idx: int = None,  # index of batch
+        batch_idx,
     ) -> torch.Tensor:
-        '''
+        """
         This is the training step for the model.
-        The model iterates over the batch and applies the photonLoss to 
+        The model iterates over the batch and applies the photonLoss to
         the output of the model and the target
-        '''
-        if batch_idx is None:
-            loss = self.photonLoss(
-                self(batch[:, self.channels :, ...]),  # apply to output of all batch
-                batch[:, : self.channels, ...],
-            )
-        else:
-            loss = self.photonLoss(
-                self(batch[batch_idx, self.channels :, ...]),
-                batch[batch_idx, : self.channels, ...],
-            )
+        """
+        loss = self.photonLoss(
+            self(batch[:, self.channels :, ...]),  # apply to output of all batch
+            batch[:, : self.channels, ...],
+        )
         self.log("train_loss", loss)
         return loss
 
     def validation_step(
         self,
         batch: torch.Tensor,  # batch of validation data
-        batch_idx: int = None,  # index of batch
+        batch_idx,
     ) -> None:
-        if batch_idx is None:
-            loss = self.photonLoss(
-                self(batch[:, self.channels :, ...]),  # apply to all batch
-                batch[:, : self.channels, ...],
-            )
-        else:
-            loss = self.photonLoss(
-                self(batch[batch_idx, self.channels :, ...]),
-                batch[batch_idx, : self.channels, ...],
-            )
+        loss = self.photonLoss(
+            self(batch[:, self.channels :, ...]),  # apply to all batch
+            batch[:, : self.channels, ...],
+        )
         self.log("val_loss", loss)
 
     def test_step(
         self,
         batch: torch.Tensor,  # batch of test data
-        batch_idx: int = None,  # index of batch
+        batch_idx,
     ) -> None:
-        if batch_idx is None:
-            loss = self.photonLoss(
-                self(batch[:, self.channels :, ...]),  # apply to all batch
-                batch[:, : self.channels, ...],
-            )
-        else:
-            loss = self.photonLoss(
-                self(batch[batch_idx, self.channels :, ...]),
-                batch[batch_idx, : self.channels, ...],
-            )
+        loss = self.photonLoss(
+            self(batch[:, self.channels :, ...]),  # apply to all batch
+            batch[:, : self.channels, ...],
+        )
         self.log("test_loss", loss)

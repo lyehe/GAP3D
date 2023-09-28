@@ -111,6 +111,7 @@ class BinomDataset3D(torch.utils.data.Dataset):
         maxProb: float = 0.99,
     ):
         super().__init__()
+        self.img = data
         # define crop window size
         if isinstance(windowSize, int):
             self.windowSize = (windowSize, windowSize, windowSize)
@@ -148,8 +149,9 @@ class BinomDataset3D(torch.utils.data.Dataset):
 
     # Return a cropped image from the dataset
     def __getitem__(self, idx: int) -> torch.Tensor:
-        assert idx < self.dataLength, "idx must < dataLength"
-        img = self._crop_3d(idx=idx)
+        idx_ = idx
+        assert idx_ < self.dataLength, "idx must < dataLength"
+        img = self._crop_3d(idx=idx_)
         # grenerate random noise from binomial distribution
         uniform = np.random.rand() * (self.maxPSNR - self.minPSNR) + self.minPSNR
         level = (10 ** (uniform / 10.0)) / (img.type(torch.float).mean().item() + 1e-5)
