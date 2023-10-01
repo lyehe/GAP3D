@@ -15,6 +15,7 @@ examples/**/PixelCNN/
 
 *.net
 *.ckpt
+*.yaml
 *.npz
 *.npy
 *.tif*
