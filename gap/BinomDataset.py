@@ -107,11 +107,11 @@ class BinomDataset3D(torch.utils.data.Dataset):
         top_corner: tuple = (0, 0, 0),
         minPSNR: float = -40.0,
         maxPSNR: float = 40.0,
+        virtSize: int = None,
         augment: bool = True,
         maxProb: float = 0.99,
     ):
         super().__init__()
-        self.img = data
         # define crop window size
         if isinstance(windowSize, int):
             self.windowSize = (windowSize, windowSize, windowSize)
@@ -124,9 +124,9 @@ class BinomDataset3D(torch.utils.data.Dataset):
         assert windowSize[0] <= unitThickness, "windowSize[0] must be <= unitThickness"
         # convert data to torch tensor
         if np.max(data) > 255:
-            self.data = torch.from_numpy(data.astype(np.int32))
+            self.img = torch.from_numpy(data.astype(np.int32))
         else:
-            self.data = torch.from_numpy(data.astype(np.uint8))
+            self.img = torch.from_numpy(data.astype(np.uint8))
         self.rand_crop = rand_crop
         self.top_corner = top_corner
         
@@ -139,27 +139,35 @@ class BinomDataset3D(torch.utils.data.Dataset):
         self.minPSNR = minPSNR
         self.maxPSNR = maxPSNR
         self.maxProb = maxProb
-        self.dataLength = self.data.shape[-3] - unitThickness
+        self.dataLength = self.img.shape[-3] - unitThickness
+        self.virtSize = virtSize
         self.std = data.std()
         self.augment = augment
 
     # Return the length of the dataset
     def __len__(self) -> int:
-        return self.dataLength
+        if self.virtSize is not None:
+            return self.virtSize
+        else:
+            return self.dataLength
 
     # Return a cropped image from the dataset
     def __getitem__(self, idx: int) -> torch.Tensor:
         idx_ = idx
-        assert idx_ < self.dataLength, "idx must < dataLength"
+        if self.virtSize is not None:
+            idx_ = np.random.randint(self.dataLength)
         img = self._crop_3d(idx=idx_)
+        
         # grenerate random noise from binomial distribution
         uniform = np.random.rand() * (self.maxPSNR - self.minPSNR) + self.minPSNR
         level = (10 ** (uniform / 10.0)) / (img.type(torch.float).mean().item() + 1e-5)
         level = min(level, self.maxProb)
+        
         binom = torch.distributions.binomial.Binomial(
             total_count=img, probs=torch.tensor([level])
         )
         imgNoise = binom.sample()
+        
         # normalize the data
         img = (img - imgNoise)[None, ...].type(torch.float)
         img = img / (img.mean() + 1e-8)
@@ -201,4 +209,4 @@ class BinomDataset3D(torch.utils.data.Dataset):
         x_end = x_start + x_crop
         y_end = y_start + y_crop
         # return the data
-        return self.data[z_start:z_end, x_start:x_end, y_start:y_end]
+        return self.img[z_start:z_end, x_start:x_end, y_start:y_end]

@@ -64,10 +64,15 @@ def upconv2x2x2(
     mode: str = "transpose",  # type of upconvolution
 ) -> nn.Module:
     if mode == "transpose":
-        return nn.ConvTranspose3d(in_channels, out_channels, kernel_size=2, stride=2)
+        return nn.ConvTranspose3d(
+            in_channels,
+            out_channels,
+            kernel_size=2,
+            stride=2,
+        )
     else:
         return nn.Sequential(
-            nn.Upsample(mode="bilinear", scale_factor=2),
+            nn.Upsample(mode="trilinear", scale_factor=2),
             conv3x3x3(in_channels, out_channels),
         )
 
@@ -78,7 +83,13 @@ def conv1x1x1(
     out_channels: int,  # number of output channels
     groups: int = 1,  # number of groups
 ) -> nn.Conv3d:
-    return nn.Conv3d(in_channels, out_channels, kernel_size=1, groups=groups, stride=1)
+    return nn.Conv3d(
+        in_channels,
+        out_channels,
+        kernel_size=1,
+        groups=groups,
+        stride=1,
+    )
 
 
 class DownConv(nn.Module):
@@ -107,16 +118,16 @@ class DownConv(nn.Module):
         self,
         input: torch.Tensor,  # input tensor
         dropout: float = 0.0,  # dropout probability
-    ) -> torch.Tensor:
+    ) -> (torch.Tensor, torch.Tensor):
         input_skip = self.conv1(input)
         input = F.relu(self.conv2(input_skip))
         input = F.relu(self.conv3(input) + input_skip)
-        if dropout > 0.0:
+        if dropout > 0.1:
             input = F.dropout(input, p=dropout)
-        output = input
+        before_pool = input
         if self.pooling:
-            output = self.pool(output)
-        return output, input
+            input = self.pool(input)
+        return input, before_pool
 
 
 class UpConv(nn.Module):
@@ -129,23 +140,31 @@ class UpConv(nn.Module):
         self,
         in_channels: int,  # number of input channels
         out_channels: int,  # number of output channels
-        merge_mode: str = "concat",  # merge mode
-        up_mode: str = "transpose",  # type of upconvolution
+        merge_mode: str = "concat",  # merge mode ("concat" | "add"")
+        up_mode: str = "transpose",  # type of upconvolution ("transpose" | "upsample")
     ):
         super().__init__()
+
+        assert merge_mode in ("concat", "add"), "merge_mode must be concat or add"
+        assert up_mode in (
+            "transpose",
+            "upsample",
+        ), "up_mode must be transpose or upsample"
+
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.merge_mode = merge_mode
         self.up_mode = up_mode
 
         self.upconv = upconv2x2x2(
-            self.in_channels, self.out_channels, mode=self.up_mode
+            self.in_channels,
+            self.out_channels,
+            mode=self.up_mode,
         )
 
         if self.merge_mode == "concat":
             self.conv1 = conv3x3x3(2 * self.out_channels, self.out_channels)
-        else:
-            # num of input channels to conv2 is same
+        else:  # self.merge_mode == 'add'
             self.conv1 = conv3x3x3(self.out_channels, self.out_channels)
         self.conv2 = conv3x3x3(self.out_channels, self.out_channels)
         self.conv3 = conv3x3x3(self.out_channels, self.out_channels)
@@ -164,7 +183,7 @@ class UpConv(nn.Module):
         input_skip = self.conv1(input)
         input = F.relu(self.conv2(input_skip))
         input = F.relu(self.conv3(input) + input_skip)
-        if dropout > 0.0:
+        if dropout > 0.1:
             input = F.dropout(input, p=dropout)
         return input
 
@@ -195,12 +214,12 @@ class UN(pl.LightningModule):
 
     def __init__(
         self,
-        levels: int = 4,  # number of levels in the u-net
+        levels: int = 5,  # number of levels in the u-net
         channels: int = 1,  # number of input channels
         depth: int = 5,  # number of MaxPools in the U-Net
         start_filts: int = 64,  # number of convolutional filters for the first conv
-        up_mode: str = "transpose",  # upconvolution type 'transpose' | 'upsample'
-        merge_mode: str = "add",  # merge mode "concat" | "add
+        up_mode: str = "transpose",  # upconvolution type ("transpose" | "upsample")
+        merge_mode: str = "add",  # merge mode ("concat" | "add")
     ):
         self.save_hyperparameters()
         super().__init__()
@@ -210,42 +229,48 @@ class UN(pl.LightningModule):
             "upsample",
         ), "`up_mode` must be transpose or upsample" "but got {}".format(up_mode)
         self.up_mode = up_mode
-
         assert merge_mode in (
             "concat",
             "add",
         ), "`merge_mode` must be concat or add" "but got {}".format(merge_mode)
         self.merge_mode = merge_mode
-
         assert not (
             self.up_mode == "upsample" and self.merge_mode == "add"
         ), "upsample is incompatible with add to decrease the number of channels"
 
         self.levels = levels
         self.channels = channels
-        self.start_filts = start_filts
         self.depth = depth
-
-        self.down_convs = []
-        self.up_convs = []
+        self.start_filts = start_filts
 
         # create the encoder pathway and add to a list
+        self.down_convs = []
         for i in range(depth):
-            ins = self.channels * self.levels if i == 0 else outs
-            outs = self.start_filts * (2**i)
+            in_channels = self.channels * self.levels if i == 0 else out_channels
+            out_channels = self.start_filts * (2**i)
             pooling = True if i < depth - 1 else False
-            down_conv = DownConv(ins, outs, pooling=pooling)
+            down_conv = DownConv(
+                in_channels,
+                out_channels,
+                pooling=pooling,
+            )
             self.down_convs.append(down_conv)
 
         # create the decoder pathway and add to a list
         # - careful! decoding only requires depth-1 blocks
+        self.up_convs = []
         for i in range(depth - 1):
-            ins = outs
-            outs = ins // 2
-            up_conv = UpConv(ins, outs, up_mode=up_mode, merge_mode=merge_mode)
+            in_channels = out_channels
+            out_channels = in_channels // 2
+            up_conv = UpConv(
+                in_channels,
+                out_channels,
+                up_mode=up_mode,
+                merge_mode=merge_mode,
+            )
             self.up_convs.append(up_conv)
 
-        self.conv_final = conv1x1x1(outs, self.channels)
+        self.conv_final = conv1x1x1(out_channels, self.channels)
 
         # add the list of modules to current module
         self.down_convs = nn.ModuleList(self.down_convs)
@@ -259,7 +284,7 @@ class UN(pl.LightningModule):
             init.constant(m.bias, 0)
 
     def reset_params(self):
-        for _, m in enumerate(self.modules()):
+        for i, m in enumerate(self.modules()):
             self.weight_init(m)
 
     def forward(
@@ -267,38 +292,46 @@ class UN(pl.LightningModule):
         input: torch.Tensor,  # input tensor
         factor: float = 10.0,  # factor for scaling the input
     ) -> torch.Tensor:
-        output = None
+        epsilon = 1
+        stack = None
+
         for i in range(self.levels):
             scale = input.clone() * (factor ** (-i))
             scale = torch.sin(scale)
-            if output is None:
-                output = scale
+            if stack is None:
+                stack = scale
             else:
-                output = torch.cat((output, scale), 1)
+                stack = torch.cat((stack, scale), 1)
+
+        input = stack
 
         encoder_outs = []
+
         # encoder pathway, save outputs for merging
         for i, module in enumerate(self.down_convs):
-            output, before_pool = module(output)
+            input, before_pool = module(input)
             encoder_outs.append(before_pool)
 
         for i, module in enumerate(self.up_convs):
             before_pool = encoder_outs[-(i + 2)]
-            output = module(before_pool, output)
+            input = module(before_pool, input)
 
-        output = self.conv_final(output)
-        return output
+        input = self.conv_final(input)
+        return input
 
     def configure_optimizers(
         self,
-        lr: float = 1e-4,  # learning rate
+        lr: float = 5e-4,  # learning rate
         mode: str = "min",  # mode for ReduceLROnPlateau
         factor: float = 0.5,  # factor for ReduceLROnPlateau
         patience: int = 10,  # patience for ReduceLROnPlateau
     ) -> dict:
         optimizer = optim.Adam(self.parameters(), lr=lr)
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, mode=mode, factor=factor, patience=patience
+            optimizer,
+            mode=mode,
+            factor=factor,
+            patience=patience,
         )
         return {
             "optimizer": optimizer,
@@ -313,7 +346,7 @@ class UN(pl.LightningModule):
         target: torch.Tensor,  # target tensor
     ) -> torch.Tensor:
         expEnergy = torch.exp(result)
-        perImage = -torch.mean(result * target, dim=(-1, -2, -3, -4), keepdims=True)
+        perImage = -torch.mean(result * target, dim=(-1, -2, -3,-4), keepdims=True)
         perImage += torch.log(
             torch.mean(expEnergy, dim=(-1, -2, -3, -4), keepdims=True)
         ) * torch.mean(target, dim=(-1, -2, -3, -4), keepdims=True)
