@@ -1,3 +1,5 @@
+from calendar import c
+from typing import Any
 import torch as torch
 import numpy as np
 from torchvision import transforms
@@ -25,9 +27,10 @@ class BinomDataset(torch.utils.data.Dataset):
         windowSize: int = 256,
         minPSNR: float = -40.0,
         maxPSNR: float = 40.0,
-        virtSize: int = None,
+        virtSize: int | None = None,
         augment: bool = True,
         maxProb: float = 0.99,
+        **kwargs: Any,
     ):
         self.data: torch.Tensor = torch.from_numpy(data.astype(np.int32))
         self.crop = transforms.RandomCrop(windowSize)
