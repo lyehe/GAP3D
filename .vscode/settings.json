@@ -2,5 +2,7 @@
     "python.analysis.extraPaths": [
         "./gap",
         "/home/yehe/Projects/Data/sted GAP test"
-    ]
+    ],
+    "python.analysis.typeCheckingMode": "basic",
+    "python.analysis.autoImportCompletions": true
 }

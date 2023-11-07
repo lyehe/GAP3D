@@ -47,7 +47,7 @@ def sample_image(
             imgsave = imgsave / imgsave.max()
             photsave = photons[0, 0, :, ...].detach().cpu()
             photsave = photsave / max(photsave.max(), 1)
-            combi = torch.cat((photsave, imgsave), 1)
+            combi = torch.cat((photsave, imgsave), -1)
             stack.append(combi.numpy())
 
         # increase photon number
